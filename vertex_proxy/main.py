@@ -175,6 +175,8 @@ def build_app(settings: Settings | None = None) -> FastAPI:
                 {
                     "id": alias,
                     "object": "model",
+                    "created": 0,
+                    "owned_by": "anthropic",
                     "vertex_model_id": real,
                     "provider": "anthropic-vertex",
                     "region": cfg.anthropic_region,
@@ -185,6 +187,8 @@ def build_app(settings: Settings | None = None) -> FastAPI:
                 {
                     "id": alias,
                     "object": "model",
+                    "created": 0,
+                    "owned_by": "google",
                     "vertex_model_id": real,
                     "provider": "gemini-vertex",
                     "region": cfg.gemini_region,
@@ -195,6 +199,8 @@ def build_app(settings: Settings | None = None) -> FastAPI:
                 {
                     "id": alias,
                     "object": "model",
+                    "created": 0,
+                    "owned_by": path.split("/")[1] if "/" in path else "vertex",
                     "vertex_model_id": path,
                     "provider": "maas-vertex",
                     "region": cfg.maas_region,
