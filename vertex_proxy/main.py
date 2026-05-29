@@ -209,6 +209,47 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             ],
         }
 
+    # --- Anthropic model listing (for clients with base_url=/anthropic) --------
+
+    @app.get("/anthropic/v1/models", dependencies=[Depends(require_api_key)])
+    async def list_anthropic_models() -> dict[str, Any]:
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": alias,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "anthropic",
+                    "vertex_model_id": real,
+                    "provider": "anthropic-vertex",
+                    "region": cfg.anthropic_region,
+                }
+                for alias, real in cfg.anthropic_model_aliases.items()
+            ],
+        }
+
+    # --- Gemini model listing (for clients with base_url=/gemini) -------------
+
+    @app.get("/gemini/v1/models", dependencies=[Depends(require_api_key)])
+    @app.get("/gemini/v1beta/models", dependencies=[Depends(require_api_key)])
+    async def list_gemini_models() -> dict[str, Any]:
+        return {
+            "object": "list",
+            "data": [
+                {
+                    "id": alias,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "google",
+                    "vertex_model_id": real,
+                    "provider": "gemini-vertex",
+                    "region": cfg.gemini_region,
+                }
+                for alias, real in cfg.gemini_model_aliases.items()
+            ],
+        }
+
     # --- Anthropic routes ------------------------------------------------------
 
     @app.post("/anthropic/v1/messages", dependencies=[Depends(require_api_key)])
