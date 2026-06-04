@@ -26,6 +26,11 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from . import __version__
 from .auth import TokenManager
 from .config import Settings, load_settings
+from .openai_anthropic_bridge import (
+    anthropic_stream_to_openai_stream,
+    anthropic_to_openai_response,
+    openai_to_anthropic_body,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -494,9 +499,12 @@ async def _handle_gemini(
 
 
 async def _handle_openai(request: Request, cfg: Settings, tm: TokenManager) -> Any:
-    """Forward OpenAI Chat Completions requests to Vertex AI MaaS models.
+    """Forward OpenAI Chat Completions requests to Vertex AI models.
 
-    Supports Moonshot (Kimi), Zhipu (GLM), MiniMax, Alibaba (Qwen), xAI (Grok).
+    Supports:
+      - Anthropic Claude models (via OpenAI→Anthropic translation)
+      - Gemini models (via Vertex OpenAI-compat endpoint)
+      - MaaS partner models: Kimi, GLM, MiniMax, Qwen, Grok
     """
     try:
         body = await request.json()
@@ -513,6 +521,13 @@ async def _handle_openai(request: Request, cfg: Settings, tm: TokenManager) -> A
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
+    http: httpx.AsyncClient = request.app.state.http
+
+    # --- routing: Anthropic Claude (OpenAI → Anthropic translation) ---------
+    if requested_model in cfg.anthropic_model_aliases:
+        return await _handle_openai_to_anthropic(
+            body, requested_model, streaming, cfg, token, headers, http
+        )
 
     # --- routing: Gemini via Vertex OpenAI-compat, or MaaS partner model. ---
     if requested_model in cfg.gemini_model_aliases or requested_model.startswith("google/"):
@@ -539,9 +554,10 @@ async def _handle_openai(request: Request, cfg: Settings, tm: TokenManager) -> A
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"unknown MaaS model '{requested_model}'. "
-                    f"known aliases: {sorted(cfg.maas_model_aliases.keys())} "
-                    f"or gemini: {sorted(cfg.gemini_model_aliases.keys())}"
+                    f"unknown model '{requested_model}'. "
+                    f"known aliases — anthropic: {sorted(cfg.anthropic_model_aliases.keys())}, "
+                    f"gemini: {sorted(cfg.gemini_model_aliases.keys())}, "
+                    f"maas: {sorted(cfg.maas_model_aliases.keys())}"
                 ),
             )
         url = (
@@ -557,7 +573,6 @@ async def _handle_openai(request: Request, cfg: Settings, tm: TokenManager) -> A
             streaming,
         )
 
-    http: httpx.AsyncClient = request.app.state.http
     if streaming:
         _METRICS.record_request("openai", requested_model, 200)
         return StreamingResponse(
@@ -572,6 +587,123 @@ async def _handle_openai(request: Request, cfg: Settings, tm: TokenManager) -> A
         raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
 
     return _passthrough_response(resp, route="openai", model=requested_model)
+
+
+# --- OpenAI → Anthropic bridge (Claude via /v1/chat/completions) -----------
+
+
+async def _handle_openai_to_anthropic(
+    body: dict[str, Any],
+    requested_model: str,
+    streaming: bool,
+    cfg: Settings,
+    token: str,
+    headers: dict[str, str],
+    http: httpx.AsyncClient,
+) -> Any:
+    """Translate OpenAI Chat Completions → Anthropic Messages, call Vertex, translate back."""
+    vertex_model = cfg.anthropic_model_aliases[requested_model]
+
+    # Convert OpenAI request body → Anthropic body.
+    anthropic_body = openai_to_anthropic_body(body)
+    anthropic_body["anthropic_version"] = "vertex-2023-10-16"
+
+    action = "streamRawPredict" if streaming else "rawPredict"
+    url = (
+        f"https://{cfg.anthropic_region}-aiplatform.googleapis.com/v1/projects/"
+        f"{cfg.project_id}/locations/{cfg.anthropic_region}/publishers/anthropic/"
+        f"models/{vertex_model}:{action}"
+    )
+
+    logger.info(
+        "openai→anthropic: model=%s → vertex_model=%s streaming=%s",
+        requested_model,
+        vertex_model,
+        streaming,
+    )
+
+    if streaming:
+        _METRICS.record_request("openai-anthropic", requested_model, 200)
+        return StreamingResponse(
+            _stream_anthropic_as_openai(http, url, headers, anthropic_body, requested_model),
+            media_type="text/event-stream",
+        )
+
+    try:
+        resp = await http.post(url, headers=headers, json=anthropic_body)
+    except httpx.HTTPError as exc:
+        logger.error("anthropic upstream error (openai bridge): %s", exc)
+        raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
+
+    _METRICS.record_request("openai-anthropic", requested_model, resp.status_code)
+
+    if resp.status_code >= 400:
+        try:
+            detail = resp.json()
+        except Exception:
+            detail = resp.text[:2000]
+        return JSONResponse(status_code=resp.status_code, content=detail)
+
+    try:
+        anthropic_data = resp.json()
+    except json.JSONDecodeError:
+        return JSONResponse(status_code=502, content={"error": "non-JSON upstream response"})
+
+    openai_resp = anthropic_to_openai_response(anthropic_data, requested_model)
+
+    # Record token metrics.
+    usage = openai_resp.get("usage", {})
+    if usage.get("prompt_tokens") or usage.get("completion_tokens"):
+        _METRICS.record_tokens(
+            requested_model,
+            usage.get("prompt_tokens", 0),
+            usage.get("completion_tokens", 0),
+        )
+
+    return JSONResponse(status_code=200, content=openai_resp)
+
+
+async def _stream_anthropic_as_openai(
+    http: httpx.AsyncClient,
+    url: str,
+    headers: dict[str, str],
+    body: dict[str, Any],
+    model: str,
+) -> AsyncGenerator[bytes, None]:
+    """Stream Anthropic SSE events, translating each to OpenAI SSE format."""
+    try:
+        async with http.stream(
+            "POST",
+            url,
+            headers=headers,
+            json=body,
+            timeout=STREAM_HTTP_TIMEOUT,
+        ) as r:
+            if r.status_code >= 400:
+                err_body = b""
+                async for chunk in r.aiter_bytes():
+                    err_body += chunk
+                detail = err_body.decode("utf-8", errors="replace")[:2000]
+                logger.warning("upstream anthropic stream returned %s: %s", r.status_code, detail)
+                yield _stream_error("upstream_http_error", detail, status_code=r.status_code)
+                return
+            buf = b""
+            async for chunk in r.aiter_bytes():
+                buf += chunk
+                while b"\n" in buf:
+                    line, buf = buf.split(b"\n", 1)
+                    translated = anthropic_stream_to_openai_stream(line, model)
+                    if translated:
+                        yield translated
+    except httpx.ReadTimeout as exc:
+        logger.warning("upstream anthropic stream read timeout: %s", exc)
+        yield _stream_error(
+            "upstream_read_timeout",
+            "upstream stream stalled before completion",
+        )
+    except httpx.HTTPError as exc:
+        logger.error("upstream anthropic stream error: %s", exc)
+        yield _stream_error("upstream_stream_error", str(exc))
 
 
 # --- helpers ----------------------------------------------------------------
