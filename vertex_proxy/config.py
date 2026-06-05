@@ -52,12 +52,22 @@ class Settings(BaseSettings):
     # Hermes/Claude-Code typically request `claude-sonnet-4-5-20250929`; Vertex
     # uses `claude-sonnet-4-5@20250929`. The proxy translates.
     anthropic_model_aliases: dict[str, str] = {
+        # Opus 4.8
+        "claude-opus-4-8": "claude-opus-4-8",
+        # Opus 4.7
+        "claude-opus-4-7": "claude-opus-4-7",
+        # Opus 4.6
+        "claude-opus-4-6": "claude-opus-4-6",
+        # Sonnet 4.6
+        "claude-sonnet-4-6": "claude-sonnet-4-6",
         # Sonnet 4.5
         "claude-sonnet-4-5": "claude-sonnet-4-5@20250929",
         "claude-sonnet-4-5-20250929": "claude-sonnet-4-5@20250929",
         # Opus 4.5
         "claude-opus-4-5": "claude-opus-4-5@20250929",
         "claude-opus-4-5-20250929": "claude-opus-4-5@20250929",
+        # Sonnet 4
+        "claude-sonnet-4-20250514": "claude-sonnet-4-20250514",
         # Haiku 4.5
         "claude-haiku-4-5": "claude-haiku-4-5@20250929",
         "claude-haiku-4-5-20250929": "claude-haiku-4-5@20250929",

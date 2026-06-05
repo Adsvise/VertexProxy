@@ -331,7 +331,7 @@ async def _handle_anthropic(request: Request, cfg: Settings, tm: TokenManager) -
 
     # Alias resolution.
     vertex_model = cfg.anthropic_model_aliases.get(requested_model, requested_model)
-    if "@" not in vertex_model:
+    if vertex_model not in cfg.anthropic_model_aliases.values():
         # Accept a bare name only if it's an exact match; otherwise fail loud.
         raise HTTPException(
             status_code=400,
