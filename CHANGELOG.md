@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-06
+
 ### Added
 - OpenAI -> Anthropic bridge: Claude models are reachable through the OpenAI Chat Completions route (`/v1/chat/completions`); system/tool/assistant messages, max_tokens/temperature/stop, streaming, and tool calls are translated, and response-side Claude `tool_use` is mapped back to OpenAI `tool_calls`.
 - Recent Anthropic models on Vertex: Opus 4.8/4.7/4.6 and Sonnet 4.6 (dateless 4.6-generation IDs).
