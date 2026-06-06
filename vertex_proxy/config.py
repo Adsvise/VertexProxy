@@ -52,25 +52,27 @@ class Settings(BaseSettings):
     # Hermes/Claude-Code typically request `claude-sonnet-4-5-20250929`; Vertex
     # uses `claude-sonnet-4-5@20250929`. The proxy translates.
     anthropic_model_aliases: dict[str, str] = {
-        # Opus 4.8
+        # Opus 4.8 (dateless 4.6-gen ID; bare id IS the pinned snapshot)
         "claude-opus-4-8": "claude-opus-4-8",
-        # Opus 4.7
+        # Opus 4.7 (dateless)
         "claude-opus-4-7": "claude-opus-4-7",
-        # Opus 4.6
+        # Opus 4.6 (dateless; do NOT append @date or it 404s)
         "claude-opus-4-6": "claude-opus-4-6",
-        # Sonnet 4.6
+        # Sonnet 4.6 (dateless)
         "claude-sonnet-4-6": "claude-sonnet-4-6",
-        # Sonnet 4.5
+        # Sonnet 4.5 (pre-4.6 -> Vertex uses '@' before the date)
         "claude-sonnet-4-5": "claude-sonnet-4-5@20250929",
         "claude-sonnet-4-5-20250929": "claude-sonnet-4-5@20250929",
-        # Opus 4.5
-        "claude-opus-4-5": "claude-opus-4-5@20250929",
-        "claude-opus-4-5-20250929": "claude-opus-4-5@20250929",
-        # Sonnet 4
-        "claude-sonnet-4-20250514": "claude-sonnet-4-20250514",
-        # Haiku 4.5
-        "claude-haiku-4-5": "claude-haiku-4-5@20250929",
-        "claude-haiku-4-5-20250929": "claude-haiku-4-5@20250929",
+        # Opus 4.5 (pre-4.6 -> Vertex ID is @20251101, NOT @20250929)
+        "claude-opus-4-5": "claude-opus-4-5@20251101",
+        "claude-opus-4-5-20251101": "claude-opus-4-5@20251101",
+        # Sonnet 4 (pre-4.6 -> Vertex uses '@' before the date, NOT '-').
+        # DEPRECATED, retires 2026-06-15. Map the OpenAI-style '-' alias to the
+        # Vertex '@' id. Remove this entry after the retirement date.
+        "claude-sonnet-4-20250514": "claude-sonnet-4@20250514",
+        # Haiku 4.5 (pre-4.6 -> Vertex ID is @20251001, NOT @20250929)
+        "claude-haiku-4-5": "claude-haiku-4-5@20251001",
+        "claude-haiku-4-5-20251001": "claude-haiku-4-5@20251001",
     }
 
     # Map canonical Gemini model names → Vertex publisher model IDs.
