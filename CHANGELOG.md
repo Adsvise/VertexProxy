@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- OpenAI -> Anthropic bridge: Claude models are reachable through the OpenAI Chat Completions route (`/v1/chat/completions`); system/tool/assistant messages, max_tokens/temperature/stop, streaming, and tool calls are translated, and response-side Claude `tool_use` is mapped back to OpenAI `tool_calls`.
+- Recent Anthropic models on Vertex: Opus 4.8/4.7/4.6 and Sonnet 4.6 (dateless 4.6-generation IDs).
+- Per-provider model-listing endpoints: `/anthropic/v1/models`, `/gemini/v1/models`, `/gemini/v1beta/models`; plus OpenAI-compatible `created`/`owned_by` fields on `/v1/models`.
+
+### Fixed
+- Corrected the Vertex IDs for the pre-4.6 Claude family: Opus 4.5 -> `@20251101` and Haiku 4.5 -> `@20251001` (both previously 404'd at the Vertex call).
+- The OpenAI-route Anthropic model validation now accepts the dateless 4.6-generation IDs (the old guard required an `@` and rejected `claude-opus-4-8` etc.).
+
 ## [0.2.0] - 2026-06-02
 
 ### Added

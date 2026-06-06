@@ -213,7 +213,10 @@ def test_maas_unknown_model_rejected() -> None:
             },
         )
         assert r.status_code == 400
-        assert "unknown MaaS model" in r.json()["detail"]
+        detail = r.json()["detail"]
+        assert "unknown model 'not-a-real-model'" in detail
+        # The unified error lists the known aliases across all providers.
+        assert "known aliases" in detail
 
 
 def test_openai_route_variants_all_accepted() -> None:

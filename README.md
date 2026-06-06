@@ -84,8 +84,9 @@ curl -X POST http://127.0.0.1:8787/gemini/v1beta/models/gemini-2.5-flash:generat
 |---|---|---|
 | `POST /anthropic/v1/messages` | Anthropic Messages API | `publishers/anthropic/models/{model}:rawPredict` |
 | `POST /gemini/v1beta/models/{m}:{action}` | Gemini generateContent API | `publishers/google/models/{m}:{action}` |
-| `POST /openai/v1/chat/completions` | OpenAI Chat Completions | Gemini (via Vertex OpenAI-compat) + MaaS partner models (Kimi, GLM, MiniMax, Qwen, Grok) |
-| `GET /v1/models` | - | Lists routable models |
+| `POST /openai/v1/chat/completions` | OpenAI Chat Completions | Anthropic Claude (via OpenAI->Anthropic translation) + Gemini (via Vertex OpenAI-compat) + MaaS partner models (Kimi, GLM, MiniMax, Qwen, Grok) |
+| `GET /v1/models` | - | Lists all routable models (OpenAI-compatible fields: id, object, created, owned_by) |
+| `GET /anthropic/v1/models`, `/gemini/v1/models`, `/gemini/v1beta/models` | - | Per-provider model listings (for clients scoped to a single provider base_url) |
 | `GET /health` | - | Liveness + auth check |
 
 The OpenAI Chat Completions shape is also accepted under the `/gemini` prefix and the bare root, so clients that build their URL from a `base_url` of `.../openai`, `.../gemini`, or the server root all reach the same handler. Model-discovery probes (`/v1/models`, `/models`) are mirrored under those prefixes too.
@@ -93,14 +94,25 @@ The OpenAI Chat Completions shape is also accepted under the `/gemini` prefix an
 Streaming is supported on all routes (Anthropic, Gemini, and the OpenAI-compat route).
 Streaming requests use a no-read-timeout upstream client so long Vertex generations do not get cut off during idle periods.
 
+Anthropic Claude is now reachable through the OpenAI Chat Completions route too: the proxy translates OpenAI <-> Anthropic Messages, so OpenAI-SDK clients can use Claude on Vertex without the Anthropic API. Tool calls are translated on the non-streaming path; streamed `tool_use` is text-only for now.
+
 ## Pre-configured models
 
 All aliases live in [`vertex_proxy/config.py`](vertex_proxy/config.py); extend as needed.
 
 **Anthropic** (on Vertex, `us-east5` by default)
+
+4.6-generation IDs are dateless: the bare id IS the pinned snapshot, so the
+proxy passes it through unchanged. Do not append `@<date>` (it 404s).
+- `claude-opus-4-8` → `claude-opus-4-8`
+- `claude-opus-4-7` → `claude-opus-4-7`
+- `claude-opus-4-6` → `claude-opus-4-6`
+- `claude-sonnet-4-6` → `claude-sonnet-4-6`
+
+Pre-4.6 IDs carry a snapshot date that Vertex separates with `@`:
 - `claude-sonnet-4-5-20250929` → `claude-sonnet-4-5@20250929`
-- `claude-opus-4-5-20250929` → `claude-opus-4-5@20250929`
-- `claude-haiku-4-5-20250929` → `claude-haiku-4-5@20250929`
+- `claude-opus-4-5` → `claude-opus-4-5@20251101`
+- `claude-haiku-4-5` → `claude-haiku-4-5@20251001`
 
 **Gemini** (on Vertex, `us-central1` by default)
 - `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash`
@@ -157,6 +169,23 @@ Set the base URL environment variable the client supports (usually one of `ANTHR
 ```bash
 export ANTHROPIC_BASE_URL=http://127.0.0.1:8787/anthropic
 ```
+
+### OpenAI-SDK client -> Claude
+
+Point any OpenAI-SDK client at the proxy's `/v1` base and request a Claude model by name. The proxy translates the OpenAI Chat Completions request into an Anthropic Messages call to Vertex and translates the response back:
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://127.0.0.1:8787/v1", api_key="bypass")
+resp = client.chat.completions.create(
+    model="claude-opus-4-8",
+    messages=[{"role": "user", "content": "hello"}],
+)
+print(resp.choices[0].message.content)
+```
+
+System messages, `max_tokens`/`temperature`/`stop`, streaming, and tool calls are translated (streamed `tool_use` is not yet).
 
 ## Run as a service (macOS launchd)
 
