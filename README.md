@@ -98,9 +98,19 @@ Streaming requests use a no-read-timeout upstream client so long Vertex generati
 All aliases live in [`vertex_proxy/config.py`](vertex_proxy/config.py); extend as needed.
 
 **Anthropic** (on Vertex, `us-east5` by default)
+
+4.6-generation IDs are dateless: the bare id IS the pinned snapshot, so the
+proxy passes it through unchanged. Do not append `@<date>` (it 404s).
+- `claude-opus-4-8` → `claude-opus-4-8`
+- `claude-opus-4-7` → `claude-opus-4-7`
+- `claude-opus-4-6` → `claude-opus-4-6`
+- `claude-sonnet-4-6` → `claude-sonnet-4-6`
+
+Pre-4.6 IDs carry a snapshot date that Vertex separates with `@`:
 - `claude-sonnet-4-5-20250929` → `claude-sonnet-4-5@20250929`
-- `claude-opus-4-5-20250929` → `claude-opus-4-5@20250929`
-- `claude-haiku-4-5-20250929` → `claude-haiku-4-5@20250929`
+- `claude-opus-4-5` → `claude-opus-4-5@20251101`
+- `claude-haiku-4-5` → `claude-haiku-4-5@20251001`
+- `claude-sonnet-4-20250514` → `claude-sonnet-4@20250514` (deprecated, retires 2026-06-15)
 
 **Gemini** (on Vertex, `us-central1` by default)
 - `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.0-flash`
