@@ -61,12 +61,6 @@ def test_anthropic_pre_46_aliases_use_at_sign_date() -> None:
         assert not re.search(r"-\d{8}$", head), f"{alias!r} has a '-' date in {vertex_id!r}"
 
 
-def test_sonnet_4_maps_to_at_sign_vertex_id() -> None:
-    """Sonnet 4 (pre-4.6) must use the '@' Vertex id, not the Claude-API '-' id."""
-    s = Settings()
-    assert s.anthropic_model_aliases["claude-sonnet-4-20250514"] == "claude-sonnet-4@20250514"
-
-
 def test_opus_45_and_haiku_45_use_correct_snapshot_dates() -> None:
     """Opus 4.5 = @20251101 and Haiku 4.5 = @20251001 on Vertex (not @20250929)."""
     s = Settings()

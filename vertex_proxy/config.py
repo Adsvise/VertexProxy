@@ -66,10 +66,6 @@ class Settings(BaseSettings):
         # Opus 4.5 (pre-4.6 -> Vertex ID is @20251101, NOT @20250929)
         "claude-opus-4-5": "claude-opus-4-5@20251101",
         "claude-opus-4-5-20251101": "claude-opus-4-5@20251101",
-        # Sonnet 4 (pre-4.6 -> Vertex uses '@' before the date, NOT '-').
-        # DEPRECATED, retires 2026-06-15. Map the OpenAI-style '-' alias to the
-        # Vertex '@' id. Remove this entry after the retirement date.
-        "claude-sonnet-4-20250514": "claude-sonnet-4@20250514",
         # Haiku 4.5 (pre-4.6 -> Vertex ID is @20251001, NOT @20250929)
         "claude-haiku-4-5": "claude-haiku-4-5@20251001",
         "claude-haiku-4-5-20251001": "claude-haiku-4-5@20251001",
