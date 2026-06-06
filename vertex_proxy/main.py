@@ -13,6 +13,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from collections import Counter
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -687,12 +688,13 @@ async def _stream_anthropic_as_openai(
                 logger.warning("upstream anthropic stream returned %s: %s", r.status_code, detail)
                 yield _stream_error("upstream_http_error", detail, status_code=r.status_code)
                 return
+            stream_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
             buf = b""
             async for chunk in r.aiter_bytes():
                 buf += chunk
                 while b"\n" in buf:
                     line, buf = buf.split(b"\n", 1)
-                    translated = anthropic_stream_to_openai_stream(line, model)
+                    translated = anthropic_stream_to_openai_stream(line, model, stream_id)
                     if translated:
                         yield translated
     except httpx.ReadTimeout as exc:
