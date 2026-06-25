@@ -178,6 +178,36 @@ def test_anthropic_model_alias_resolution() -> None:
         assert body["anthropic_version"] == "vertex-2023-10-16"
 
 
+def test_anthropic_strips_context_management() -> None:
+    """Claude Code v2.1+ sends `context_management` which Vertex rejects as
+    'Extra inputs are not permitted'. Verify it is stripped before forwarding."""
+    app, _ = _build_test_app({})
+    with TestClient(app) as client:
+        mock_http = _install_mock_http(client)
+        mock_http.post.return_value = httpx.Response(
+            200,
+            json={"id": "msg_test", "content": [{"type": "text", "text": "ok"}]},
+            request=httpx.Request("POST", "http://x"),
+        )
+
+        r = client.post(
+            "/anthropic/v1/messages",
+            json={
+                "model": "claude-sonnet-4-5-20250929",
+                "max_tokens": 10,
+                "messages": [{"role": "user", "content": "hi"}],
+                "context_management": {"enabled": True, "max_context_tokens": 100000},
+            },
+        )
+        assert r.status_code == 200
+        call_args = mock_http.post.await_args
+        body = call_args.kwargs["json"]
+        assert "model" not in body
+        assert "context_management" not in body
+        assert body["anthropic_version"] == "vertex-2023-10-16"
+        assert body["max_tokens"] == 10
+
+
 def test_gemini_path_forwarding() -> None:
     captured: dict[str, Any] = {}
     app, _ = _build_test_app(captured)

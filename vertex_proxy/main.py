@@ -393,7 +393,10 @@ async def _handle_anthropic(request: Request, cfg: Settings, tm: TokenManager) -
         )
 
     # Anthropic-on-Vertex wants `anthropic_version` and removes `model`.
-    upstream_body = {k: v for k, v in body.items() if k != "model"}
+    # Also strip fields that Vertex doesn't support but some clients send
+    # (e.g. Claude Code's `context_management`).
+    _VERTEX_ANTHROPIC_STRIP = {"model", "context_management"}
+    upstream_body = {k: v for k, v in body.items() if k not in _VERTEX_ANTHROPIC_STRIP}
     upstream_body.setdefault("anthropic_version", "vertex-2023-10-16")
 
     streaming = bool(body.get("stream"))

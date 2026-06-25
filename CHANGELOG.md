@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Strip `context_management` field from Anthropic requests before forwarding to Vertex AI. Claude Code v2.1+ sends this field, and Vertex rejects it with 400 "Extra inputs are not permitted".
+
 ## [0.3.0] - 2026-06-06
 
 ### Added
