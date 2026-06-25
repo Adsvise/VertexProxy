@@ -35,6 +35,44 @@ from .openai_anthropic_bridge import (
 
 logger = logging.getLogger(__name__)
 
+# --- Ollama model registry (populated at startup) --------------------------
+_OLLAMA_MODELS: dict[str, str] = {}  # model name -> Ollama base_url
+
+
+async def _discover_ollama_models(cfg: Settings, http: httpx.AsyncClient) -> None:
+    """Populate _OLLAMA_MODELS from cfg.ollama_backends.
+
+    Clears the registry first so a re-run (a second startup in the same
+    process) rediscovers from scratch rather than accumulating stale entries.
+    """
+    _OLLAMA_MODELS.clear()
+    for key, base_url in cfg.ollama_backends.items():
+        base_url = base_url.rstrip("/")
+        if key == "*":
+            try:
+                resp = await http.get(f"{base_url}/api/tags", timeout=10.0)
+                resp.raise_for_status()
+                data = resp.json()
+                for model_info in data.get("models", []):
+                    name = model_info.get("name", "")
+                    if name:
+                        _OLLAMA_MODELS[name] = base_url
+                logger.info(
+                    "ollama: discovered %d models from %s",
+                    len(data.get("models", [])),
+                    base_url,
+                )
+            except Exception as exc:
+                logger.warning("ollama: failed to discover models from %s: %s", base_url, exc)
+        else:
+            _OLLAMA_MODELS[key] = base_url
+            logger.info("ollama: registered model %s -> %s", key, base_url)
+    if _OLLAMA_MODELS:
+        logger.info(
+            "ollama: %d models available: %s", len(_OLLAMA_MODELS), sorted(_OLLAMA_MODELS.keys())
+        )
+
+
 DEFAULT_HTTP_TIMEOUT = httpx.Timeout(120.0, connect=10.0)
 # Vertex streaming responses can legitimately go quiet for longer than the
 # default read window while the model is thinking. Keep connect/write/pool
@@ -118,6 +156,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         app.state.token_mgr = token_mgr
         app.state.cfg = cfg
         app.state.http = httpx.AsyncClient(timeout=DEFAULT_HTTP_TIMEOUT)
+        await _discover_ollama_models(cfg, app.state.http)
         try:
             yield
         finally:
@@ -212,6 +251,16 @@ def build_app(settings: Settings | None = None) -> FastAPI:
                     "region": cfg.maas_region,
                 }
                 for alias, path in cfg.maas_model_aliases.items()
+            ]
+            + [
+                {
+                    "id": name,
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "ollama",
+                    "provider": "ollama",
+                }
+                for name in _OLLAMA_MODELS
             ],
         }
 
@@ -308,6 +357,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
             model_id in cfg.anthropic_model_aliases
             or model_id in cfg.gemini_model_aliases
             or model_id in cfg.maas_model_aliases
+            or model_id in _OLLAMA_MODELS
             or model_id.startswith("google/")
         ):
             return {"id": model_id, "object": "model", "owned_by": "vertex-proxy"}
@@ -551,19 +601,9 @@ async def _handle_openai(request: Request, cfg: Settings, tm: TokenManager) -> A
             upstream_body["model"],
             streaming,
         )
-    else:
+    elif requested_model in cfg.maas_model_aliases:
         # MaaS partner models (Kimi, GLM, MiniMax, Qwen, Grok).
-        path_fragment = cfg.maas_model_aliases.get(requested_model)
-        if path_fragment is None:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"unknown model '{requested_model}'. "
-                    f"known aliases — anthropic: {sorted(cfg.anthropic_model_aliases.keys())}, "
-                    f"gemini: {sorted(cfg.gemini_model_aliases.keys())}, "
-                    f"maas: {sorted(cfg.maas_model_aliases.keys())}"
-                ),
-            )
+        path_fragment = cfg.maas_model_aliases[requested_model]
         url = (
             f"https://{cfg.maas_region}-aiplatform.googleapis.com/v1beta1/projects/"
             f"{cfg.project_id}/locations/{cfg.maas_region}/{path_fragment}/chat/completions"
@@ -575,6 +615,23 @@ async def _handle_openai(request: Request, cfg: Settings, tm: TokenManager) -> A
             requested_model,
             path_fragment,
             streaming,
+        )
+    elif requested_model in _OLLAMA_MODELS:
+        # Ollama local models are checked after the Vertex routes so a
+        # discovered local model can never shadow a managed Vertex alias.
+        return await _handle_ollama(
+            body, requested_model, streaming, _OLLAMA_MODELS[requested_model], http
+        )
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"unknown model '{requested_model}'. "
+                f"known aliases. anthropic: {sorted(cfg.anthropic_model_aliases.keys())}, "
+                f"gemini: {sorted(cfg.gemini_model_aliases.keys())}, "
+                f"maas: {sorted(cfg.maas_model_aliases.keys())}, "
+                f"ollama: {sorted(_OLLAMA_MODELS.keys())}"
+            ),
         )
 
     if streaming:
@@ -591,6 +648,44 @@ async def _handle_openai(request: Request, cfg: Settings, tm: TokenManager) -> A
         raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
 
     return _passthrough_response(resp, route="openai", model=requested_model)
+
+
+# --- Ollama pass-through handler -------------------------------------------
+
+
+async def _handle_ollama(
+    body: dict[str, Any],
+    requested_model: str,
+    streaming: bool,
+    base_url: str,
+    http: httpx.AsyncClient,
+) -> Any:
+    """Forward to an Ollama server's OpenAI-compatible endpoint."""
+    url = f"{base_url}/v1/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    upstream_body = dict(body)
+
+    logger.info(
+        "openai->ollama: model=%s -> %s streaming=%s",
+        requested_model,
+        url,
+        streaming,
+    )
+
+    if streaming:
+        _METRICS.record_request("ollama", requested_model, 200)
+        return StreamingResponse(
+            _stream_bytes(http, url, headers, upstream_body),
+            media_type="text/event-stream",
+        )
+
+    try:
+        resp = await http.post(url, headers=headers, json=upstream_body)
+    except httpx.HTTPError as exc:
+        logger.error("ollama upstream error: %s", exc)
+        raise HTTPException(status_code=502, detail=f"upstream error: {exc}") from exc
+
+    return _passthrough_response(resp, route="ollama", model=requested_model)
 
 
 # --- OpenAI → Anthropic bridge (Claude via /v1/chat/completions) -----------

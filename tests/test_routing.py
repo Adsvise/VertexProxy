@@ -421,3 +421,59 @@ def test_stream_read_timeout_returns_structured_sse_error() -> None:
         assert response.status_code == 200
         assert "event: error" in body
         assert "upstream_read_timeout" in body
+
+
+def test_ollama_does_not_shadow_a_vertex_alias() -> None:
+    """A model name discovered from a local Ollama server must not shadow a
+    managed Vertex route. When the same name is also a Vertex alias, the
+    request goes to Vertex, not to the local Ollama server."""
+    import vertex_proxy.main as main_mod
+
+    captured: dict[str, Any] = {}
+    app, _ = _build_test_app(captured)
+    with TestClient(app) as client:
+        mock_http = _install_mock_http(client)
+        mock_http.post.return_value = httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "ok"}}]},
+            request=httpx.Request("POST", "http://x"),
+        )
+        main_mod._OLLAMA_MODELS["gemini-2.5-flash"] = "http://fake-ollama:11434"
+        try:
+            r = client.post(
+                "/v1/chat/completions",
+                json={"model": "gemini-2.5-flash", "messages": [{"role": "user", "content": "hi"}]},
+            )
+            assert r.status_code == 200
+            call_args = mock_http.post.await_args
+            url = call_args.args[0] if call_args.args else call_args.kwargs["url"]
+            assert "endpoints/openapi/chat/completions" in url, url
+            assert "fake-ollama" not in url
+        finally:
+            main_mod._OLLAMA_MODELS.clear()
+
+
+def test_ollama_routes_when_no_vertex_alias_matches() -> None:
+    """A model name known only to Ollama still routes to the Ollama server."""
+    import vertex_proxy.main as main_mod
+
+    app, _ = _build_test_app({})
+    with TestClient(app) as client:
+        mock_http = _install_mock_http(client)
+        mock_http.post.return_value = httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "ok"}}]},
+            request=httpx.Request("POST", "http://x"),
+        )
+        main_mod._OLLAMA_MODELS["llama3.3:70b"] = "http://fake-ollama:11434"
+        try:
+            r = client.post(
+                "/v1/chat/completions",
+                json={"model": "llama3.3:70b", "messages": [{"role": "user", "content": "hi"}]},
+            )
+            assert r.status_code == 200
+            call_args = mock_http.post.await_args
+            url = call_args.args[0] if call_args.args else call_args.kwargs["url"]
+            assert url == "http://fake-ollama:11434/v1/chat/completions", url
+        finally:
+            main_mod._OLLAMA_MODELS.clear()

@@ -78,6 +78,13 @@ class Settings(BaseSettings):
         "gemini-2.0-flash": "gemini-2.0-flash-001",
     }
 
+    # --- Ollama backends ---
+    # Map model names to Ollama-compatible base URLs.
+    # Example: {"qwen3:30b-a3b": "http://localhost:11434"}
+    # Use "*" as a key to set a default/fallback URL; all models from that
+    # server are auto-discovered and added to the model catalog.
+    ollama_backends: dict[str, str] = {}
+
     # Region for Vertex MaaS (Model as a Service) open-source partner models:
     # Kimi K2.5, GLM 5, MiniMax-M2.5, Qwen 3.5, Grok 4.20, etc.
     # Vertex typically serves these via the global endpoint or us-central1.

@@ -124,6 +124,20 @@ Pre-4.6 IDs carry a snapshot date that Vertex separates with `@`:
 - `qwen3.5`, `qwen-3` (Alibaba)
 - `grok-4.20`, `grok-4.1-fast` (xAI)
 
+**Ollama** (local models, auto-discovered)
+
+Set `VERTEX_PROXY_OLLAMA_BACKENDS` to a JSON object mapping model names to Ollama base URLs. Use `"*"` as a wildcard key to auto-discover all models from a server:
+
+```bash
+# Auto-discover all models from a local Ollama instance
+export VERTEX_PROXY_OLLAMA_BACKENDS='{"*": "http://localhost:11434"}'
+
+# Or map specific models to specific servers
+export VERTEX_PROXY_OLLAMA_BACKENDS='{"qwen3:30b-a3b": "http://localhost:11434", "llama3.3:70b": "http://gpu-server:11434"}'
+```
+
+Discovered models appear in `/v1/models` with `owned_by=ollama` and are routed through Ollama's OpenAI-compatible endpoint (`/v1/chat/completions`).
+
 ## Recipes
 
 ### Claude Code CLI
@@ -216,6 +230,7 @@ All settings accept `VERTEX_PROXY_` env var prefix or CLI flags.
 | `VERTEX_PROXY_MAAS_REGION` | `us-central1` | Region for Kimi / GLM / MiniMax / Qwen / Grok |
 | `VERTEX_PROXY_HOST` | `127.0.0.1` | Bind host |
 | `VERTEX_PROXY_PORT` | `8787` | Bind port |
+| `VERTEX_PROXY_OLLAMA_BACKENDS` | `{}` | JSON map of model names to Ollama base URLs; `"*"` auto-discovers |
 | `VERTEX_PROXY_TOKEN_REFRESH_SECONDS` | `3000` | Token refresh interval (50 min) |
 | `VERTEX_PROXY_LOG_LEVEL` | `info` | uvicorn log level |
 

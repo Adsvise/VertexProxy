@@ -1,4 +1,4 @@
-# Example docker-compose setup for vertex-proxy.
+# vertex-proxy docker-compose setup.
 # Usage:
 #   1. Copy .env.example to .env and fill in your values
 #   2. Place your GCP service-account JSON at ./credentials/gcp-key.json
@@ -22,8 +22,12 @@ services:
       VERTEX_PROXY_ANTHROPIC_REGION: ${VERTEX_PROXY_ANTHROPIC_REGION:-us-east5}
       VERTEX_PROXY_GEMINI_REGION: ${VERTEX_PROXY_GEMINI_REGION:-us-central1}
       VERTEX_PROXY_LOG_LEVEL: ${VERTEX_PROXY_LOG_LEVEL:-info}
+      # Ollama backend: auto-discover all models from the host's Ollama
+      VERTEX_PROXY_OLLAMA_BACKENDS: '{"*": "http://host.docker.internal:11434"}'
       # Uncomment to require a bearer token on all routes:
       # VERTEX_PROXY_API_KEY: ${VERTEX_PROXY_API_KEY}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys;sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8787/health',timeout=3).status==200 else 1)"]
       interval: 30s
