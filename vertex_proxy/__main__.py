@@ -18,7 +18,7 @@ def main() -> int:
         prog="vertex-proxy",
         description="Anthropic + Gemini proxy for Google Cloud Vertex AI",
     )
-    parser.add_argument("--host", help="bind host (default: 127.0.0.1)")
+    parser.add_argument("--host", help="bind host (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, help="bind port (default: 8787)")
     parser.add_argument("--credentials", help="path to GCP service-account JSON")
     parser.add_argument("--project-id", help="GCP project ID (inferred from creds if unset)")

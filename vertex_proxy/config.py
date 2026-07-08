@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     gemini_region: str = "us-central1"
 
     # --- Server ---
-    host: str = "127.0.0.1"
+    host: str = "0.0.0.0"
     port: int = 8787
     log_level: str = "info"
 
@@ -73,6 +73,7 @@ class Settings(BaseSettings):
 
     # Map canonical Gemini model names → Vertex publisher model IDs.
     gemini_model_aliases: dict[str, str] = {
+        "gemini-3.5-flash": "gemini-3.5-flash",
         "gemini-2.5-pro": "gemini-2.5-pro",
         "gemini-2.5-flash": "gemini-2.5-flash",
         "gemini-2.0-flash": "gemini-2.0-flash-001",

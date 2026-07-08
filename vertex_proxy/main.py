@@ -35,6 +35,12 @@ from .openai_anthropic_bridge import (
 
 logger = logging.getLogger(__name__)
 
+def _get_aiplatform_base(region: str) -> str:
+    """Returns the base Vertex AI host URL. Drops the region prefix if region is 'global'."""
+    if region == "global":
+        return "https://aiplatform.googleapis.com"
+    return f"https://{region}-aiplatform.googleapis.com"
+
 # --- Ollama model registry (populated at startup) --------------------------
 _OLLAMA_MODELS: dict[str, str] = {}  # model name -> Ollama base_url
 
@@ -453,7 +459,7 @@ async def _handle_anthropic(request: Request, cfg: Settings, tm: TokenManager) -
     # Vertex endpoint: :streamRawPredict for streaming, :rawPredict for one-shot.
     action = "streamRawPredict" if streaming else "rawPredict"
     url = (
-        f"https://{cfg.anthropic_region}-aiplatform.googleapis.com/v1/projects/"
+        f"{_get_aiplatform_base(cfg.anthropic_region)}/v1/projects/"
         f"{cfg.project_id}/locations/{cfg.anthropic_region}/publishers/anthropic/"
         f"models/{vertex_model}:{action}"
     )
@@ -511,7 +517,7 @@ async def _handle_gemini(
         body = {}
 
     url = (
-        f"https://{cfg.gemini_region}-aiplatform.googleapis.com/v1/projects/"
+        f"{_get_aiplatform_base(cfg.gemini_region)}/v1/projects/"
         f"{cfg.project_id}/locations/{cfg.gemini_region}/publishers/google/"
         f"models/{vertex_model}:{action}"
     )
@@ -590,7 +596,7 @@ async def _handle_openai(request: Request, cfg: Settings, tm: TokenManager) -> A
         bare_model = requested_model.removeprefix("google/")
         vertex_model = cfg.gemini_model_aliases.get(bare_model, bare_model)
         url = (
-            f"https://{cfg.gemini_region}-aiplatform.googleapis.com/v1beta1/projects/"
+            f"{_get_aiplatform_base(cfg.gemini_region)}/v1beta1/projects/"
             f"{cfg.project_id}/locations/{cfg.gemini_region}/endpoints/openapi/chat/completions"
         )
         upstream_body = dict(body)
@@ -605,7 +611,7 @@ async def _handle_openai(request: Request, cfg: Settings, tm: TokenManager) -> A
         # MaaS partner models (Kimi, GLM, MiniMax, Qwen, Grok).
         path_fragment = cfg.maas_model_aliases[requested_model]
         url = (
-            f"https://{cfg.maas_region}-aiplatform.googleapis.com/v1beta1/projects/"
+            f"{_get_aiplatform_base(cfg.maas_region)}/v1beta1/projects/"
             f"{cfg.project_id}/locations/{cfg.maas_region}/{path_fragment}/chat/completions"
         )
         upstream_body = dict(body)
@@ -709,7 +715,7 @@ async def _handle_openai_to_anthropic(
 
     action = "streamRawPredict" if streaming else "rawPredict"
     url = (
-        f"https://{cfg.anthropic_region}-aiplatform.googleapis.com/v1/projects/"
+        f"{_get_aiplatform_base(cfg.anthropic_region)}/v1/projects/"
         f"{cfg.project_id}/locations/{cfg.anthropic_region}/publishers/anthropic/"
         f"models/{vertex_model}:{action}"
     )

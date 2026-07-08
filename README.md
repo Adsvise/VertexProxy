@@ -228,7 +228,7 @@ All settings accept `VERTEX_PROXY_` env var prefix or CLI flags.
 | `VERTEX_PROXY_ANTHROPIC_REGION` | `us-east5` | Region for Claude |
 | `VERTEX_PROXY_GEMINI_REGION` | `us-central1` | Region for Gemini |
 | `VERTEX_PROXY_MAAS_REGION` | `us-central1` | Region for Kimi / GLM / MiniMax / Qwen / Grok |
-| `VERTEX_PROXY_HOST` | `127.0.0.1` | Bind host |
+| `VERTEX_PROXY_HOST` | `0.0.0.0` | Bind host |
 | `VERTEX_PROXY_PORT` | `8787` | Bind port |
 | `VERTEX_PROXY_OLLAMA_BACKENDS` | `{}` | JSON map of model names to Ollama base URLs; `"*"` auto-discovers |
 | `VERTEX_PROXY_TOKEN_REFRESH_SECONDS` | `3000` | Token refresh interval (50 min) |
@@ -249,7 +249,7 @@ If credit-burn is your goal, point vertex-proxy at Gemini. If billing unificatio
 
 ## Security
 
-vertex-proxy binds to `127.0.0.1` by default and **ships with no authentication**. It's designed as a local-loopback shim; anyone who can reach it can spend your GCP credits via your service account.
+vertex-proxy binds to `0.0.0.0` by default and **ships with no authentication**. It's designed as a local-loopback shim; anyone who can reach it can spend your GCP credits via your service account.
 
 Do not expose it to a public interface. If you need remote access, put it behind a reverse proxy with proper auth (nginx + basic auth, Tailscale, Cloud Run with IAP, etc.).
 
