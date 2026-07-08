@@ -355,6 +355,15 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     async def openai_chat_completions_bare(request: Request) -> Any:
         return await _handle_openai(request, cfg, token_mgr)
 
+    # --- OpenAI embeddings ---
+    @app.post("/openai/v1/embeddings", dependencies=[Depends(require_api_key)])
+    async def openai_embeddings(request: Request) -> Any:
+        return await _handle_openai_embeddings(request, cfg, token_mgr)
+
+    @app.post("/v1/embeddings", dependencies=[Depends(require_api_key)])
+    async def openai_embeddings_root(request: Request) -> Any:
+        return await _handle_openai_embeddings(request, cfg, token_mgr)
+
     # /v1/models/{model}: some clients probe for a specific model's existence
     # before dispatching. Return minimal metadata so they don't bail.
     @app.get("/v1/models/{model_id:path}")
@@ -554,6 +563,89 @@ async def _handle_gemini(
 
     return _passthrough_response(resp, route="gemini", model=requested_model)
 
+
+# --- OpenAI-compatible Embeddings handler ----------------------------------
+
+async def _handle_openai_embeddings(request: Request, cfg: Settings, tm: TokenManager) -> Any:
+    """Handle OpenAI-style embeddings requests by translating them to Vertex AI embedContent."""
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="request body must be JSON") from exc
+
+    requested_model = (body.get("model") or "").strip()
+    if not requested_model:
+        raise HTTPException(status_code=400, detail="missing 'model' in request body")
+
+    input_data = body.get("input")
+    if not input_data:
+        raise HTTPException(status_code=400, detail="missing 'input' in request body")
+
+    if isinstance(input_data, str):
+        inputs = [input_data]
+    elif isinstance(input_data, list):
+        inputs = input_data
+    else:
+        raise HTTPException(status_code=400, detail="'input' must be a string or array of strings")
+
+    token = await tm.get_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    http: httpx.AsyncClient = request.app.state.http
+
+    # Get the correct Vertex model ID
+    vertex_model = cfg.gemini_model_aliases.get(requested_model, requested_model)
+
+    url = (
+        f"{_get_aiplatform_base(cfg.gemini_region)}/v1/projects/"
+        f"{cfg.project_id}/locations/{cfg.gemini_region}/publishers/google/"
+        f"models/{vertex_model}:embedContent"
+    )
+
+    import asyncio
+    
+    async def fetch_embedding(text: str) -> tuple[list[float], int]:
+        req_body = {"content": {"parts": [{"text": str(text)}]}}
+        if "dimensions" in body:
+            req_body["outputDimensionality"] = body["dimensions"]
+            
+        res = await http.post(url, headers=headers, json=req_body)
+        if res.status_code != 200:
+            raise HTTPException(status_code=res.status_code, detail=res.text)
+            
+        data = res.json()
+        emb_values = data.get("embedding", {}).get("values", [])
+        tokens = data.get("usageMetadata", {}).get("totalTokenCount", 0)
+        return emb_values, tokens
+
+    try:
+        results = await asyncio.gather(*(fetch_embedding(t) for t in inputs))
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    data_objs = []
+    total_tokens = 0
+    for i, (emb_values, tokens) in enumerate(results):
+        data_objs.append({
+            "object": "embedding",
+            "embedding": emb_values,
+            "index": i
+        })
+        total_tokens += tokens
+
+    return {
+        "object": "list",
+        "data": data_objs,
+        "model": requested_model,
+        "usage": {
+            "prompt_tokens": total_tokens,
+            "total_tokens": total_tokens
+        }
+    }
 
 # --- OpenAI-compatible (Vertex MaaS) handler -------------------------------
 

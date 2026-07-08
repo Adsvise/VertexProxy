@@ -77,6 +77,11 @@ class Settings(BaseSettings):
         "gemini-2.5-pro": "gemini-2.5-pro",
         "gemini-2.5-flash": "gemini-2.5-flash",
         "gemini-2.0-flash": "gemini-2.0-flash-001",
+        "gemini-embedding-2": "gemini-embedding-2",
+        "gemini-embedding-001": "gemini-embedding-001",
+        "text-embedding-004": "text-embedding-004",
+        "text-embedding-001": "text-embedding-001",
+        "gemini-3.1-flash-image": "gemini-3.1-flash-image",
     }
 
     # --- Ollama backends ---
